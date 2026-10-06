@@ -161,6 +161,28 @@ Every watched tool call emits an OpenInference-tagged OTel span (`openinference.
 - an **in-memory exporter** (source of truth for metrics)
 - an optional **OTLP gRPC exporter** (`localhost:4317`) for a UI
 
+Model-call tracing is opt-in via the framework tracing integration. Attach
+once after creating `Instrumentation` and detach after the run:
+
+```python
+from telemetry.integrations.langchain import LangChainTracingIntegration
+
+langchain_tracing = LangChainTracingIntegration()
+langchain_tracing.attach(instrumentation)
+try:
+    runner.invoke(initial_state, thread_id="chaos-001")
+finally:
+    langchain_tracing.detach()
+```
+
+This uses the same tracer provider as the agent and tool spans. LangChain's
+OpenInference instrumentor emits `LLM` spans; export normalization aliases
+observed `llm.model_name` and token counts to `gen_ai.request.model` and
+`gen_ai.usage.*`. Missing model metadata or usage stays missing; no token
+counts are guessed. LangChain callbacks may also emit chain/tool spans, so
+avoid counting those alongside proxy tool spans as separate tool calls. Message
+content may contain sensitive data and should be redacted before production use.
+
 **Arize Phoenix** runs alongside the collector in Docker Compose:
 
 ```powershell

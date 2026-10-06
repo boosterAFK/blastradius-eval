@@ -11,6 +11,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from openinference.semconv.trace import SpanAttributes
 
 from telemetry.span import SpanKind
+from telemetry.llm import NormalizingSpanExporter
 class Instrumentation:
     def __init__(self, service_name: str = "blastradius-eval", otlp_endpoint: str = "http://localhost:4317", enable_otlp: bool = True) -> None:
         self.service_name = service_name
@@ -21,10 +22,12 @@ class Instrumentation:
         self.provider = TracerProvider(resource=self.resource)
 
         self._memory = InMemorySpanExporter()
-        self.provider.add_span_processor(SimpleSpanProcessor(self._memory))
+        self.provider.add_span_processor(SimpleSpanProcessor(NormalizingSpanExporter(self._memory)))
 
         if enable_otlp:
-            self.provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint=self.otlp_endpoint, insecure=True)))
+            self.provider.add_span_processor(SimpleSpanProcessor(NormalizingSpanExporter(
+                OTLPSpanExporter(endpoint=self.otlp_endpoint, insecure=True)
+            )))
 
         trace.set_tracer_provider(self.provider)
         self.tracer = self.provider.get_tracer(service_name)
