@@ -161,14 +161,19 @@ Every watched tool call emits an OpenInference-tagged OTel span (`openinference.
 - an **in-memory exporter** (source of truth for metrics)
 - an optional **OTLP gRPC exporter** (`localhost:4317`) for a UI
 
-**Arize Phoenix** is the recommended UI (purpose-built for LLM/agent traces):
+**Arize Phoenix** runs alongside the collector in Docker Compose:
 
-```bash
-uv add arize-phoenix
-.venv\Scripts\python.exe -m phoenix.server.main serve   # UI on :6006, OTLP on :4317
+```powershell
+docker compose -f infrastructure/docker-compose.yaml up -d
+docker compose -f infrastructure/docker-compose.yaml ps
 ```
 
-Then open `http://localhost:6006`. Jaeger still works if you prefer it (`infrastructure/docker-compose.yaml`).
+Open `http://localhost:6006`. The application sends OTLP gRPC to
+`localhost:4317` (the collector), which forwards spans to Phoenix over the
+Docker network. The collector also logs spans to its `debug` exporter.
+Phoenix persists SQLite data in the `phoenix_data` named volume. Do not run
+`.venv\Scripts\python.exe -m phoenix.server.main serve` concurrently: the
+local server would compete with the collector for host port 4317.
 
 ---
 
@@ -203,7 +208,7 @@ examples/
     secure_migration_agent.py
   run_benchmark.py
   run_secure_migration_benchmark.py
-infrastructure/      docker-compose for Jaeger / otel-collector (optional)
+infrastructure/      docker-compose for Phoenix + OTLP collector (optional)
 ```
 
 ---
