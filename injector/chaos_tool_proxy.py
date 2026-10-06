@@ -1,9 +1,11 @@
 ﻿from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol
 
+from openinference.semconv.trace import SpanAttributes
 from telemetry.instrumentation import Instrumentation
-from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
+from telemetry.span import SpanKind
 
 if TYPE_CHECKING:
     from injector.base import Fault
@@ -18,7 +20,7 @@ class FaultDispatcher(Protocol):
     def dispatch(self, tool_name: str) -> Optional[Fault]: ...
 
     @property
-    def instrumentation(self) -> Instrumentation: ...
+    def instrumentation(self) -> Optional[Instrumentation]: ...
 
 
 class ChaosToolProxy:
@@ -29,26 +31,32 @@ class ChaosToolProxy:
         self.instrumentation = dispatcher.instrumentation
 
     def __call__(self, *args, **kwargs):
-        span = self.instrumentation.start_span(
-            self.tool_name,  # span name
+        if self.instrumentation is None:
+            fault = self.dispatcher.dispatch(self.tool_name)
+            if fault is not None:
+                return fault.apply(self.tool_name, self.original_callable, *args, **kwargs)
+            return self.original_callable(*args, **kwargs)
+
+        with self.instrumentation.span_context(
+            name=f"chaos_tool_proxy.{self.tool_name}",
+            span_kind=SpanKind.TOOL,
             **{
-                SpanAttributes.OPENINFERENCE_SPAN_KIND: OpenInferenceSpanKindValues.TOOL.value,
                 SpanAttributes.TOOL_NAME: self.tool_name,
+                "gen_ai.tool.name": self.tool_name,
+                SpanAttributes.INPUT_VALUE: json.dumps(
+                    {"args": args, "kwargs": kwargs},
+                    default=str,
+                ),
+                SpanAttributes.INPUT_MIME_TYPE: "application/json",
             },
-        )
-        try:
+        ) as span:
             fault = self.dispatcher.dispatch(self.tool_name)
             if fault is not None:
                 span.set_attributes({"fault.injected": True, "fault.type": type(fault).__name__})
-                result = fault.apply(self.tool_name, self.original_callable, *args, **kwargs)
-            else:
-                span.set_attributes({"fault.injected": False})
-                result = self.original_callable(*args, **kwargs)
-        except Exception as e:
-            self.instrumentation.end_span(span, status="error", **{"error.type": type(e).__name__})
-            raise
-        self.instrumentation.end_span(span, status="ok")
-        return result
+                return fault.apply(self.tool_name, self.original_callable, *args, **kwargs)
+
+            span.set_attribute("fault.injected", False)
+            return self.original_callable(*args, **kwargs)
 
     def __repr__(self) -> str:
         return f"ChaosToolProxy(tool_name={self.tool_name!r}, original={self.original_callable!r})"

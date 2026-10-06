@@ -8,6 +8,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
+from openinference.semconv.trace import SpanAttributes
 
 from telemetry.span import SpanKind
 class Instrumentation:
@@ -36,9 +37,11 @@ class Instrumentation:
         Requires passing standard openinference span kinds (e.g., "AGENT", "TOOL", "LLM").
         """
         # Enforce GenAI Semantic Conventions for span kind
-        attrs["openinference.span.kind"] = span_kind.value.upper()
+        attrs[SpanAttributes.OPENINFERENCE_SPAN_KIND] = span_kind.value.value
         
-        with self.tracer.start_as_current_span(name, attributes=attrs) as span:
+        with self.tracer.start_as_current_span(
+            name, attributes=attrs, record_exception=False, set_status_on_exception=False
+        ) as span:
             try:
                 yield span
             except Exception as e:

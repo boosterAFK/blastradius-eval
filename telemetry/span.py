@@ -1,9 +1,12 @@
 
 import enum
 
+from openinference.semconv.trace import OpenInferenceSpanKindValues
+
 
 class SpanKind(enum.Enum):
-    AGENT = "AGENT"
-    TOOL = "TOOL"
-    CHAIN = "CHAIN"
-    LLM = "LLM"
+    AGENT = OpenInferenceSpanKindValues.AGENT
+    TOOL = OpenInferenceSpanKindValues.TOOL
+    CHAIN = OpenInferenceSpanKindValues.CHAIN
+    LLM = OpenInferenceSpanKindValues.LLM
+    RETRIEVER = OpenInferenceSpanKindValues.RETRIEVER
