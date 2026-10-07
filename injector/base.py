@@ -1,11 +1,15 @@
-﻿from abc import ABC, abstractmethod
+﻿from __future__ import annotations
+
+from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any, List, Optional, Protocol
+from typing import TYPE_CHECKING, Any, List, Optional, Protocol
 
 from injector.adapters.base import ToolAdapter
 from injector.chaos_tool_proxy import ChaosToolProxy
 from injector.schedulers.base import FaultScheduler
-from telemetry.instrumentation import Instrumentation
+
+if TYPE_CHECKING:
+    from telemetry.instrumentation import Instrumentation
 
 
 class Fault(ABC):
@@ -34,7 +38,7 @@ class FaultInjector:
         return tuple(self._schedulers)
 
     @property
-    def instrumentation(self) -> Instrumentation:
+    def instrumentation(self) -> Optional[Instrumentation]:
         return self._instrumentation
 
     def add_scheduler(self, scheduler: FaultScheduler) -> None:
@@ -71,7 +75,8 @@ class FaultInjector:
             if name not in watched:
                 poisoned.append(tool)
                 continue
-            proxy = ChaosToolProxy(name, self._adapter.get_callable(tool), self)
+            observer = self._instrumentation.make_tool_observer() if self._instrumentation is not None else None
+            proxy = ChaosToolProxy(name, self._adapter.get_callable(tool), self, observer=observer)
             poisoned.append(self._adapter.clone_with_callable(tool, proxy))
         return poisoned
 

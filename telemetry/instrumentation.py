@@ -74,3 +74,9 @@ class Instrumentation:
 
     def get_finished_spans(self) -> list:
         return self._memory.get_finished_spans()
+
+    def make_tool_observer(self):
+        """Provide the injector's optional observer without exposing OTel to it."""
+        from telemetry.tool_observer import OpenTelemetryToolObserver
+
+        return OpenTelemetryToolObserver(self)

@@ -156,7 +156,9 @@ then the target recovers until re-armed. Re-calling the trigger re-arms it - tha
 
 ## Observability
 
-Every watched tool call emits an OpenInference-tagged OTel span (`openinference.span.kind=TOOL`, `tool.name`, plus chaos attributes `fault.injected` / `fault.type` / `error.type`). Spans go to:
+Every watched tool call is observed as an OpenInference-tagged OTel span
+(`openinference.span.kind=TOOL`, `tool.name`, plus `fault.injected` and, when
+applicable, `fault.type` / `error.type`). Spans go to:
 
 - an **in-memory exporter** (source of truth for metrics)
 - an optional **OTLP gRPC exporter** (`localhost:4317`) for a UI
@@ -179,8 +181,8 @@ This uses the same tracer provider as the agent and tool spans. LangChain's
 OpenInference instrumentor emits `LLM` spans; export normalization aliases
 observed `llm.model_name` and token counts to `gen_ai.request.model` and
 `gen_ai.usage.*`. Missing model metadata or usage stays missing; no token
-counts are guessed. LangChain callbacks may also emit chain/tool spans, so
-avoid counting those alongside proxy tool spans as separate tool calls. Message
+counts are guessed. Count each framework tool invocation once; the run-ID bridge
+enriches the existing LangChain TOOL span instead of exporting a sibling. Message
 content may contain sensitive data and should be redacted before production use.
 
 **Arize Phoenix** runs alongside the collector in Docker Compose:
