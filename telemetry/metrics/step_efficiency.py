@@ -1,47 +1,71 @@
-﻿from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from openinference.semconv.trace import SpanAttributes
+from langchain_core.messages import ToolMessage
 
-from langchain_core.messages import HumanMessage
+from telemetry.metrics.base import Metric, MetricData
+from telemetry.task import Outcome, TaskSpec
 
-from telemetry.metrics.base import Metric
+
+@dataclass(frozen=True)
+class StepEfficiencyResult:
+    name: str
+    score: float | None
+    baseline_calls: int | None
+    actual_calls: int
+    outcome: Outcome
+    reason: str
+    baseline_path: tuple[str, ...] = ()
+
+    def readable(self) -> str:
+        score = f"{self.score:.4f}" if self.score is not None else "unavailable"
+        return f"{self.name}: {score} ({self.baseline_calls} / {self.actual_calls} tool calls; {self.outcome.status}: {self.reason})"
 
 
-class StepEfficiencyMetric(Metric):
+class StepEfficiencyMetric(Metric[StepEfficiencyResult]):
     """
-    Step Efficiency Ratio: baseline_steps / actual_steps.
-
-    Measures how directly the agent reached the solution, penalizing
-    meandering reasoning and unnecessary tool invocations.
-
-    Two baselines:
-      - ``clean``       : ``optimal_steps`` for a no-fault run. Penalizes the
-                          agent for faults it could not avoid (degradation /
-                          blast-radius view).
-      - ``fault_aware`` : ``optimal_steps + scheduler.forced_extra_steps()``.
-                          Grades recovery quality given the scheduled faults
-                          were unavoidable (a perfect recovery scores 1.0).
+    Tool-call efficiency for an independently validated task outcome.
     """
 
-    def __init__(self, optimal_steps: int, scheduler: Optional[Any] = None, baseline: str = "clean"):
+    def __init__(self, task: TaskSpec, scheduler=None, baseline: str = "clean"):
+        if baseline not in ("clean", "fault_aware"):
+            raise ValueError("baseline must be clean or fault_aware")
+        if baseline == "fault_aware" and scheduler is None:
+            raise ValueError("fault_aware requires a scheduler")
         super().__init__(name=f"step_efficiency/{baseline}")
-        self.optimal_steps = optimal_steps
-        self.scheduler = scheduler
-        self.baseline = baseline
+        self.task = task
+        self.baseline = task.baseline(scheduler if baseline == "fault_aware" else None)
 
-    def compute(self, trajectory: Dict[str, Any]) -> float:
-        messages = trajectory.get("messages", [])
-        actual_steps = self.get_actual_steps(messages)
-        if actual_steps == 0:
-            return 0.0
-        return self._baseline_steps() / actual_steps
-
-    def _baseline_steps(self) -> int:
-        if self.baseline == "fault_aware" and self.scheduler is not None:
-            return self.optimal_steps + self.scheduler.forced_extra_steps()
-        return self.optimal_steps
-
-    def get_actual_steps(self, messages: list) -> int:
-        """
-        Counts reasoning + tool-execution steps. The initial HumanMessage is
-        the task input, not a step taken by the agent, so it is excluded.
-        """
-        return sum(1 for m in messages if not isinstance(m, HumanMessage))
+    def evaluate(self, data: MetricData) -> StepEfficiencyResult:
+        outcome = self.task.oracle(data.trajectory)
+        if data.trace_id is None:
+            return StepEfficiencyResult(self.name, None, self.baseline.calls, 0, outcome,
+                                        "trace_id required", self.baseline.path)
+        seen: set[tuple[int, int]] = set()
+        for span in data.spans:
+            context = getattr(span, "context", None)
+            attributes = getattr(span, "attributes", None) or {}
+            if context is None:
+                continue
+            if (context.trace_id == data.trace_id
+                and attributes.get(SpanAttributes.OPENINFERENCE_SPAN_KIND) == "TOOL"):
+                seen.add((context.trace_id, context.span_id))
+        actual = len(seen)
+        tool_messages = sum(isinstance(message, ToolMessage)
+                            for message in data.trajectory.get("messages", ()))
+        reason = outcome.reason if outcome.status != "valid" else self.baseline.reason
+        score = (self.baseline.calls / actual
+                 if outcome.status == "valid" and self.baseline.calls is not None
+                 and actual >= self.baseline.calls and actual > 0 else None)
+        if actual == 0:
+            reason = "no TOOL spans for run"
+            score = None
+        elif tool_messages != actual:
+            reason = f"TOOL spans ({actual}) differ from tool results ({tool_messages})"
+            score = None
+        elif outcome.status == "valid" and self.baseline.calls is not None and actual < self.baseline.calls:
+            reason = "observed calls below baseline; trace or task definition incomplete"
+        return StepEfficiencyResult(
+            name=self.name,
+            score=score, baseline_calls=self.baseline.calls, actual_calls=actual,
+            outcome=outcome, reason=reason, baseline_path=self.baseline.path,
+        )

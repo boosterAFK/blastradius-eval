@@ -18,6 +18,7 @@ class InstrumentedRunner:
         self.instrumentation = instrumentation
         self.agent_name = agent_name
         self.agent_id = agent_id if agent_id is not None else str(uuid4())
+        self.last_trace_id: int | None = None
 
     def invoke(
         self,
@@ -38,7 +39,8 @@ class InstrumentedRunner:
             name=f"{self.agent_name}.invoke",
             span_kind=SpanKind.AGENT,
             **attrs,
-        ):
+        ) as span:
+            self.last_trace_id = span.get_span_context().trace_id
             return self.runner.invoke(
                 input_data,
                 thread_id=thread_id,

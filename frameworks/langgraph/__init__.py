@@ -2,7 +2,7 @@ from frameworks.base import FrameworkProvider
 from frameworks.langgraph.runner import LangGraphRunner
 from injector.adapters.base import ToolAdapter
 from frameworks.langgraph.tool_adapter import LangGraphToolAdapter
-from frameworks.langgraph.evaluator import LangGraphEvaluator
+from telemetry.evaluator import Evaluator
 
 class LangGraphProvider(FrameworkProvider):
 
@@ -12,5 +12,5 @@ class LangGraphProvider(FrameworkProvider):
     def make_runner(self, uncompiled_graph, checkpointer=None) -> "LangGraphRunner":
         return LangGraphRunner(uncompiled_graph, checkpointer=checkpointer)
 
-    def make_evaluator(self, optimal_steps: int) -> "LangGraphEvaluator":
-        return LangGraphEvaluator(optimal_steps)
+    def make_evaluator(self, instrumentation) -> Evaluator:
+        return Evaluator(instrumentation)

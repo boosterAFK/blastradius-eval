@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, AbstractSet, Optional
-
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, AbstractSet, Optional, Any
 
 if TYPE_CHECKING:
     from injector.base import Fault
@@ -71,11 +69,10 @@ class FaultScheduler(ABC):
         FSM positions). The armed schedule/rules themselves are preserved.
         """
 
-    def forced_extra_steps(self) -> int:
-        """
-        Minimum extra steps the scheduled faults force even a perfect agent to
-        take (e.g. an unavoidable error plus the reasoning step to recover).
-        Used to derive a fault-aware Step Efficiency baseline. Default: 0
-        (no forced cost); schedulers that guarantee faults override this.
-        """
-        return 0
+    @abstractmethod
+    def prediction_state(self) -> Any:
+        """Return fresh, isolated state for a hypothetical run."""
+
+    @abstractmethod
+    def predict(self, state: Any, tool_name: str) -> tuple[Any, Optional[Fault]]:
+        """Return next hypothetical state and fault without changing runtime state."""

@@ -53,3 +53,12 @@ class FixedCallScheduler(FaultScheduler):
 
     def reset(self) -> None:
         self._counters.clear()
+
+    def prediction_state(self) -> dict[str, int]:
+        return {}
+
+    def predict(self, state: dict[str, int], tool_name: str) -> tuple[dict[str, int], Optional[Fault]]:
+        next_state = {**state, tool_name: state.get(tool_name, 0) + 1}
+        fault = next((fault for call, fault in self._timeline.get(tool_name, ())
+                      if call == next_state[tool_name]), None)
+        return next_state, fault
